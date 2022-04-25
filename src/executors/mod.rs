@@ -2,6 +2,7 @@
 /// i.e. the functions that have the responsibility of parsing and executing functions.
 use crate::io_helpers::read_file;
 
+use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -25,7 +26,7 @@ pub async fn execute_middleware_function<'a>(
     headers: &Headers,
     req: &HttpRequest,
     route_params: HashMap<String, String>,
-    queries: Arc<Mutex<HashMap<String, String>>>,
+    queries: Rc<RefCell<HashMap<String, String>>>,
     number_of_params: u8,
 ) -> Result<HashMap<String, HashMap<String, String>>> {
     // TODO:
@@ -58,13 +59,18 @@ pub async fn execute_middleware_function<'a>(
     for elem in (*headers).iter() {
         headers_python.insert(elem.key().clone(), elem.value().clone());
     }
+    let mut queries_clone: HashMap<String, String> = HashMap::new();
+
+    for (key, value) in (*queries).borrow().clone() {
+        queries_clone.insert(key, value);
+    }
 
     match function {
         PyFunction::CoRoutine(handler) => {
             let output = Python::with_gil(|py| {
                 let handler = handler.as_ref(py);
                 request.insert("params", route_params.into_py(py));
-                request.insert("queries", (queries.clone()).borrow().into_py(py));
+                request.insert("queries", queries_clone.into_py(py));
                 request.insert("headers", headers_python.into_py(py));
                 // request.insert("body", data.into_py(py));
 
@@ -98,7 +104,7 @@ pub async fn execute_middleware_function<'a>(
             let output: Result<HashMap<String, HashMap<String, String>>> = Python::with_gil(|py| {
                 let handler = handler.as_ref(py);
                 request.insert("params", route_params.into_py(py));
-                request.insert("queries", queries.clone().borrow().into_py(py));
+                request.insert("queries", queries_clone.into_py(py));
                 request.insert("headers", headers_python.into_py(py));
                 request.insert("body", data.into_py(py));
 
@@ -156,12 +162,18 @@ pub async fn execute_http_function(
     // request object accessible while creating routes
     let mut request = HashMap::new();
 
+    let mut queries_clone: HashMap<String, String> = HashMap::new();
+
+    for (key, value) in (*queries).borrow().clone() {
+        queries_clone.insert(key, value);
+    }
+
     match function {
         PyFunction::CoRoutine(handler) => {
             let output = Python::with_gil(|py| {
                 let handler = handler.as_ref(py);
                 request.insert("params", route_params.into_py(py));
-                request.insert("queries", queries.into_py(py));
+                request.insert("queries", queries_clone.into_py(py));
                 request.insert("headers", headers.into_py(py));
                 let data = data.into_py(py);
                 request.insert("body", data);
